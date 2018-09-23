@@ -1,8 +1,34 @@
 # -*- coding: utf-8 -*-
+#=================================#
+
+#             USER                #
+
+#=================================#
+
+IDOL="nansu"
+# 留空白的話就是全載
+
+"""
+
+請只更改以上區域。
+
+"""
+
+
 MODE=2
+
+# first_link='https://news.walkerplus.com/article/161893/940070_615.jpg'
+# last_link='https://news.walkerplus.com/article/161893/940101_615.jpg'
+
+first='https://news.walkerplus.com/article/161893/940'
+last='_615.jpg'
+setup_num=70
+end_num=101
+mode_3_url='https://www.pixiv.net/member_illust.php?mode=medium&illust_id=68987922'
 """
 1:Download from number
 2:Download from mongodb
+3:Download single
 """
 
 from string import Template
@@ -13,8 +39,10 @@ from urllib.error import HTTPError,URLError
 # Process Bar
 from tqdm import tqdm
 
-
-folder='SavePic'
+if IDOL=="":
+    folder='SavePic'
+else:
+    folder='SavePic_'+IDOL
 def ensure_dir(file_path):
     if not os.path.exists(file_path):
         os.makedirs(file_path)
@@ -36,26 +64,40 @@ db = client['heroku_jj2sv6sm']
 import logging
 logging.basicConfig(format='[%(asctime)s](%(levelname)s) %(name)s - %(message)s',
                     level=logging.INFO,
-                    filename="SavePic/SavePIC_LOG.txt")
+                    filename=folder+"/SavePIC_LOG.txt")
 logger = logging.getLogger(__name__)
 
 
+def delreplist(list):
+    newlist=[]
+    for i in list:
+        if i not in newlist:
+            newlist.append(i)
+    return newlist
 
-# first_link='https://news.walkerplus.com/article/161893/940070_615.jpg'
-# last_link='https://news.walkerplus.com/article/161893/940101_615.jpg'
+PIXIV_headers={
+    'User-Agent':'Mozilla/4.0 (compatible; MSIE 5.5; Windows NT)',
+    'Referer':'https://www.pixiv.net'
+}
 
-first='https://news.walkerplus.com/article/161893/940'
-last='_615.jpg'
-setup_num=70
-end_num=101
+def pic_detecter(link):
+    logger.info("URL detecting:%s",link)
+    link_type=""
+    tw_link=[]
+    type=""
 
-
-
-def twitter_pic_detecter(link):
-    if link.find("twitter")==-1:
+    # detect link type
+    if link.find("twitter.com")!=-1:
+        link_type="twitter"
+    elif link.find("pbs.twimg.com")!=-1:
+        tw_link.append(link)
+        return tw_link
+    elif link.find("www.pixiv.net")!=-1:
+        link_type="pixiv"
+    else:
         return False
-    tw_link=""
 
+    # open url
     try:
         f=urlopen(link)
     except HTTPError:
@@ -67,24 +109,54 @@ def twitter_pic_detecter(link):
 
     try:
         for i in f:
-            if str(i).find('https://pbs.twimg.com/media/')!=-1:
+            newlink=""
+            if link_type=="twitter":
                 start=str(i).find('https://pbs.twimg.com/media/')
-                end=str(i).find('.jpg')
+            elif link_type=="pixiv":
+                #logger.info("PIXIV URL(Not support now):%s",link)
+                #return
+                start=str(i).find('https://embed.pixiv.net/')
+
+            if start!=-1:
+                # test if jpg or png
+                if link_type=="twitter":
+                    if str(i).find('.jpg')!=-1:
+                        end=str(i).find('.jpg')
+                        type="JPG"
+                    elif str(i).find('.png')!=-1:
+                        end=str(i).find('.png')
+                        type="PNG"
+                    else:
+                        logger.error("Unknown file type:%s",link)
+                        type="Unknown"
+                        return False
+                elif link_type=="pixiv":
+                    end=str(i).find('">')
+                    type="JPG"
+
                 index=start
                 while(index<end):
-                    tw_link+=str(i)[index]
+                    newlink+=str(i)[index]
                     index+=1
-                if tw_link!='':
-                    tw_link+=".jpg:large"
-                    logger.info("URL detected susessful:%s",link)
-                    break
+                if newlink!='':
+                    if link_type=="twitter":
+                        if type=="JPG":
+                            newlink+=".jpg:large"
+                        elif type=="PNG":
+                            newlink+=".png:large"
+                    elif link_type=="pixiv":
+                        pass
+                    tw_link.append(newlink)
                 else:
                     logger.warning("URL detected failed:%s",link)
                     logger.info("Retrying")
     except UnboundLocalError:
         logger.warning("Unknown url:%s",link)
         return False
-    return tw_link
+    new_link=delreplist(tw_link)
+    for i in new_link:
+        logger.info("URL detected susessful(%s):%s",type,i)
+    return new_link
 
 ################################################
 #                   main                       #
@@ -101,17 +173,31 @@ def main():
             links.append(first + num + last)
     elif MODE==2:
         pic_db=db['ml_idol_pic_colle']
-        ins=pic_db.find()
-        total_data=pic_db.count_documents({})
-        print("  Analysis Twitter Link...")
+        if IDOL=="":
+            colle={}
+        else:
+            colle={"name":IDOL}
+        ins=pic_db.find(colle)
+        total_data=pic_db.count_documents(colle)+1
+        print("  Analysis Link...")
         pbar1 = tqdm(total=total_data)
         for data in ins:
             tw_url=data['url']
-            pic_url=twitter_pic_detecter(tw_url)
+            pic_url=pic_detecter(tw_url)
             if pic_url!=False:
-                links.append(pic_url)
+                for i in pic_url:
+                    links.append(i)
             pbar1.update(1)
+        temp=links
+        links=delreplist(temp)
+        pbar1.update(1)
         pbar1.close()
+
+    elif MODE==3:
+        pic_url=pic_detecter(mode_3_url)
+        if pic_url!=False:
+            for i in pic_url:
+                links.append(i)
 
     x=1
     link_num=len(links)
@@ -123,7 +209,10 @@ def main():
         PATH=folder+'/'+name
         local = os.path.join(PATH % x)  #檔案儲存位置
         try:
-            urlretrieve(link,local)
+            if link.find('https://i.pximg.net/')!=-1:
+                urlretrieve(link,local,data=PIXIV_headers)
+            else:
+                urlretrieve(link,local)
             logger.info("(%d)Download susessful:%s",x,link)
         except HTTPError as e:
             logger.error("(%d)HTTPError at:%s",x,link)
