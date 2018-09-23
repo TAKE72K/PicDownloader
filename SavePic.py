@@ -5,7 +5,7 @@
 
 #=================================#
 
-IDOL="nansu"
+IDOL="tsumugi"
 # 留空白的話就是全載
 
 """
@@ -53,8 +53,8 @@ import pymongo
 from pymongo import MongoClient
 
 url = "mongodb://$dbuser:$dbpassword@ds149732.mlab.com:49732/heroku_jj2sv6sm"
-mongo_us = 'admin'
-mongo_ps = os.environ['MONGO_PSW']
+mongo_us = 'user'
+mongo_ps = 'user1234'
 temp=Template(url)
 mongo_url=temp.substitute(dbuser=mongo_us,dbpassword=mongo_ps)
 client = MongoClient(mongo_url)
